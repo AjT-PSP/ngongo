@@ -122,8 +122,8 @@ void sense2phase(struct ADC *adc_in,struct Phase *i_ph){
 }
 
 void phase2dqs(struct Phase *i_ph, struct Stationary *i_dqs){
-	i_dqs->ds = (2*Iph->a - Iph->b - Iph->c)/3;
-	i_dqs->qs = (Iph->b - Iph->c)/sqrt(3);
+	i_dqs->ds = (2*i_ph->a - i_ph->b - i_ph->c)/3;
+	i_dqs->qs = (i_ph->b - i_ph->c)/sqrt(3);
 }
 
 void dqs2dqr(struct Stationary *i_dqs, struct Rotating *i_dqr, float theta){
@@ -153,9 +153,9 @@ void read_angle(struct angle *angle){
 	angle->rad = data/8192.0*2*M_PI;
 }
 
-void read_speed(){
-
-}
+//void read_speed(){
+//
+//}
 
 void m2e_angle(struct angle *theta){
 	// don't use in speed loop
@@ -168,10 +168,10 @@ void m2e_angle(struct angle *theta){
 	theta->rad += M_PI/2;
 }
 
-void limiter(float *value, float min, float max){
-	if(value >= max) value = max;
-	else if(value <= min) value = min;
-}
+//void limiter(float *value, float min, float max){
+//	if(value >= max) value = max;
+//	else if(value <= min) value = min;
+//}
 
 void SpaceVector(float v_comm){
 	// assuming there is no need for vds so v_comm is vqs_command
@@ -236,13 +236,13 @@ void SpaceVector(float v_comm){
 	C = 1.0*PWM_RES/(Tc*V_DC);
 }
 
-void serial_write(){
-
-}
-
-void serial_read(){
-
-}
+//void serial_write(){
+//
+//}
+//
+//void serial_read(){
+//
+//}
 /* USER CODE END 0 */
 
 /**
