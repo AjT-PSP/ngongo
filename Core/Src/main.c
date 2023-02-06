@@ -115,9 +115,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 }
 
 void sense2phase(ADC *adc_in,Phase *i_ph){
-  i_ph->a = -(adc_in->a/4095*3.3-1.65)*CURRENT_SENSE_GAIN*R_SENSE;
-  i_ph->b = -(adc_in->b/4095*3.3-1.65)*CURRENT_SENSE_GAIN*R_SENSE;
-  i_ph->c = -(adc_in->c/4095*3.3-1.65)*CURRENT_SENSE_GAIN*R_SENSE;
+  i_ph->a = -(adc_in->a/4095.0*3.3-1.65)/(CURRENT_SENSE_GAIN*R_SENSE);
+  i_ph->b = -(adc_in->b/4095.0*3.3-1.65)/(CURRENT_SENSE_GAIN*R_SENSE);
+  i_ph->c = -(adc_in->c/4095.0*3.3-1.65)/(CURRENT_SENSE_GAIN*R_SENSE);
 }
 
 void phase2dqs(Phase *i_ph,Stationary *i_dqs){
@@ -156,7 +156,7 @@ void read_angle(struct angle *angle){
 //
 //}
 
-void m2e_angle(struct angle *theta){
+void m2e_angle(angle *theta){
 	// don't use in speed loop
 	theta->deg *= pole_pair*gear_ratio;
 	theta->rad *= pole_pair*gear_ratio;
@@ -167,34 +167,38 @@ void m2e_angle(struct angle *theta){
 	theta->rad += M_PI/2;
 }
 
-//void limiter(float *value, float min, float max){
-//	if(value >= max) value = max;
-//	else if(value <= min) value = min;
-//}
+void limiter(float *value, float *min, float *max){
+	if(value >= max) value = max;
+	else if(value <= min) value = min;
+}
 
-void SpaceVector(float v_comm){
-	// assuming there is no need for vds so v_comm is vqs_command
-	struct angle theta;
+void SpaceVector(Stationary *v,angle theta_e){
+	// calculate the
 	static uint8_t sector=0;
+	float v_ref;
+	// calculate the magnitude of vds and vqs
+	v_ref = sqrt(v->ds*v->ds + v->qs*v->qs);
+
+	// calculate the angle between stator command and rotor angle
 
 	// for testing
-	read_angle(&theta);
-	m2e_angle(&theta);
+	//read_angle(&theta_e);
+	//m2e_angle(&theta_e);
 
-	if (theta.deg>=0 && theta.deg<=60) sector = 1;
-	else if (theta.deg>=60 && theta.deg<=120) sector = 2;
-	else if (theta.deg>=120 && theta.deg<=180) sector = 3;
-	else if (theta.deg>=180 && theta.deg<=240) sector = 4;
-	else if (theta.deg>=240 && theta.deg<=300) sector = 5;
-	else if (theta.deg>=300 && theta.deg<=360) sector = 6;
+	if (theta_e.deg>=0 && theta_e.deg<=60) sector = 1;
+	else if (theta_e.deg>=60 && theta_e.deg<=120) sector = 2;
+	else if (theta_e.deg>=120 && theta_e.deg<=180) sector = 3;
+	else if (theta_e.deg>=180 && theta_e.deg<=240) sector = 4;
+	else if (theta_e.deg>=240 && theta_e.deg<=300) sector = 5;
+	else if (theta_e.deg>=300 && theta_e.deg<=360) sector = 6;
 	else sector=0;
 
-//	sector = floor(theta.rad*3/M_PI)+1;
+//	sector = floor(theta_e*3/M_PI)+1;
 
 	float n = sector*1.0;
-	float ts = v_comm/V_DC*sqrt(3);
-	float t1 = ts*sin(n*M_PI/3.0-theta.rad);
-	float t2 = ts*sin((theta.rad-n-1.0)/3.0*M_PI);
+	float ts = v_ref/V_DC*sqrt(3);
+	float t1 = ts*sin(n*M_PI/3.0-theta_e.rad);
+	float t2 = ts*sin((theta_e.rad-n-1.0)/3.0*M_PI);
 
 	float t0 = ts-(t1+t2);
 	float t120 = t1+t2+(t0/2);
