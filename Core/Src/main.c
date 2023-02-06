@@ -27,13 +27,39 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef struct ADC {
+	uint32_t a;
+	uint32_t b;
+	uint32_t c;
+}ADC;
+
+typedef struct Phase {
+	float a;
+	float b;
+	float c;
+}Phase;
+
+typedef struct Stationary{
+	float ds;
+	float qs;
+}Stationary;
+
+typedef struct Rotating{
+	float de;
+	float qe;
+}Rotating;
+
+typedef struct angle{
+	float deg;
+	float rad;
+}angle;
 
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define current_sense_gain 4.0
-#define r_sense 0.005
+#define CURRENT_SENSE_GAIN 4.0
+#define R_SENSE 0.005
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -62,33 +88,6 @@ uint16_t PWM_RES = 65535;
 
 uint16_t ANGLEUNC = 0x3ffe;
 
-struct ADC {
-	uint32_t a;
-	uint32_t b;
-	uint32_t c;
-};
-
-struct Phase {
-  float a;
-  float b;
-  float c;
-};
-
-struct Stationary{
-	float ds;
-	float qs;
-};
-
-struct Rotating{
-	float de;
-	float qe;
-};
-
-struct angle{
-	float deg;
-	float rad;
-};
-
 float A,B,C;
 struct angle m_angle;
 /* USER CODE END PV */
@@ -115,10 +114,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
   __HAL_TIM_SET_COMPARE( &htim1, TIM_CHANNEL_3, C);
 }
 
-void sense2phase(struct ADC *adc_in,struct Phase *i_ph){
-  i_ph->a = -(adc_in->a/4095*3.3-1.65)*current_sense_gain*r_sense;
-  i_ph->b = -(adc_in->b/4095*3.3-1.65)*current_sense_gain*r_sense;
-  i_ph->c = -(adc_in->c/4095*3.3-1.65)*current_sense_gain*r_sense;
+void sense2phase(ADC *adc_in,struct Phase *i_ph){
+  i_ph->a = -(adc_in->a/4095*3.3-1.65)*CURRENT_SENSE_GAIN*R_SENSE;
+  i_ph->b = -(adc_in->b/4095*3.3-1.65)*CURRENT_SENSE_GAIN*R_SENSE;
+  i_ph->c = -(adc_in->c/4095*3.3-1.65)*CURRENT_SENSE_GAIN*R_SENSE;
 }
 
 void phase2dqs(struct Phase *i_ph, struct Stationary *i_dqs){
