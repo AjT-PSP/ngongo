@@ -62,6 +62,11 @@ uint16_t PWM_RES = 65535;
 
 uint16_t ANGLEUNC = 0x3ffe;
 
+struct ADC {
+	uint32_t a;
+	uint32_t b;
+	uint32_t c;
+};
 
 struct Phase {
   float a;
@@ -110,7 +115,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
   __HAL_TIM_SET_COMPARE( &htim1, TIM_CHANNEL_3, C);
 }
 
-void sense2phase(struct Phase *adc_in,struct Phase *i_ph, float gain){
+void sense2phase(struct ADC *adc_in,struct Phase *i_ph, float gain){
   i_ph->a = -adc_in->a*gain/4095.0;
   i_ph->b = -adc_in->b*gain/4095.0;
   i_ph->c = -adc_in->c*gain/4095.0;
@@ -148,7 +153,9 @@ void read_angle(struct angle *angle){
 	angle->rad = data/8192.0*2*M_PI;
 }
 
-void
+void read_speed(){
+
+}
 
 void m2e_angle(struct angle *theta){
 	// don't use in speed loop
