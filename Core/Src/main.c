@@ -114,23 +114,23 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
   __HAL_TIM_SET_COMPARE( &htim1, TIM_CHANNEL_3, C);
 }
 
-void sense2phase(ADC *adc_in,struct Phase *i_ph){
+void sense2phase(ADC *adc_in,Phase *i_ph){
   i_ph->a = -(adc_in->a/4095*3.3-1.65)*CURRENT_SENSE_GAIN*R_SENSE;
   i_ph->b = -(adc_in->b/4095*3.3-1.65)*CURRENT_SENSE_GAIN*R_SENSE;
   i_ph->c = -(adc_in->c/4095*3.3-1.65)*CURRENT_SENSE_GAIN*R_SENSE;
 }
 
-void phase2dqs(struct Phase *i_ph, struct Stationary *i_dqs){
+void phase2dqs(Phase *i_ph,Stationary *i_dqs){
 	i_dqs->ds = (2*i_ph->a - i_ph->b - i_ph->c)/3;
 	i_dqs->qs = (i_ph->b - i_ph->c)/sqrt(3);
 }
 
-void dqs2dqr(struct Stationary *i_dqs, struct Rotating *i_dqr, float theta){
+void dqs2dqr(Stationary *i_dqs, Rotating *i_dqr, float theta){
 	i_dqr->de = i_dqs->ds*cos(theta)+i_dqs->qs*sin(theta);
 	i_dqr->qe = -i_dqs->ds*sin(theta)+i_dqs->qs*cos(theta);
 }
 
-void dqr2dqs(struct Rotating *i_dqr, struct Stationary *i_dqs,float theta){
+void dqr2dqs(Rotating *i_dqr, Stationary *i_dqs,float theta){
 	i_dqs->ds = i_dqr->de*cos(theta) - i_dqr->qe*sin(theta);
 	i_dqs->qs = i_dqr->de*sin(theta) + i_dqr->qe*cos(theta);
 }
