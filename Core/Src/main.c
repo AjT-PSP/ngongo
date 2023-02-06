@@ -32,7 +32,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define gain_cs 4.0
+#define current_sense_gain 4.0
 #define r_sense 0.005
 /* USER CODE END PD */
 
@@ -115,10 +115,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
   __HAL_TIM_SET_COMPARE( &htim1, TIM_CHANNEL_3, C);
 }
 
-void sense2phase(struct ADC *adc_in,struct Phase *i_ph, float gain){
-  i_ph->a = -adc_in->a*gain/4095.0;
-  i_ph->b = -adc_in->b*gain/4095.0;
-  i_ph->c = -adc_in->c*gain/4095.0;
+void sense2phase(struct ADC *adc_in,struct Phase *i_ph){
+  i_ph->a = -(adc_in->a/4095*3.3-1.65)*current_sense_gain*r_sense;
+  i_ph->b = -(adc_in->b/4095*3.3-1.65)*current_sense_gain*r_sense;
+  i_ph->c = -(adc_in->c/4095*3.3-1.65)*current_sense_gain*r_sense;
 }
 
 void phase2dqs(struct Phase *i_ph, struct Stationary *i_dqs){
@@ -257,9 +257,6 @@ int main(void)
   struct Phase phase_current = {0,0,0};
   struct Stationary dqs_current = {0,0};
   struct Rotating dqe_current = {0,0};
-
-  float current_gain = gain_cs*r_sense;
-
 
   /* USER CODE END 1 */
 
