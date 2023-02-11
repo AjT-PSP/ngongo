@@ -45,14 +45,19 @@ typedef struct Stationary{
 }Stationary;
 
 typedef struct Rotating{
-	float de;
-	float qe;
+	float dr;
+	float qr;
 }Rotating;
 
-typedef struct angle{
+typedef struct Angle{
 	float deg;
 	float rad;
-}angle;
+}Angle;
+
+union Data{
+	uint32_t asFloat;
+	uint8_t asByte[4];
+}Data;
 
 /* USER CODE END PTD */
 
@@ -79,17 +84,22 @@ TIM_HandleTypeDef htim1;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_tx;
+DMA_HandleTypeDef hdma_usart2_rx;
 
 /* USER CODE BEGIN PV */
 float V_DC = 24.0;
 float pole_pair = 21;
 float gear_ratio = 1;
-uint16_t PWM_RES = 65535;
+uint16_t PWM_RES = 7200;
 
 uint16_t ANGLEUNC = 0x3ffe;
 
-float A,B,C;
-struct angle m_angle;
+float Va,Vb,Vc;
+volatile uint16_t i_ph1 = 0;
+volatile uint16_t i_ph2 = 0;
+volatile uint16_t i_ph3 = 0;
+float m_angle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -109,9 +119,16 @@ static void MX_USART1_UART_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-  __HAL_TIM_SET_COMPARE( &htim1, TIM_CHANNEL_1, A);
-  __HAL_TIM_SET_COMPARE( &htim1, TIM_CHANNEL_2, B);
-  __HAL_TIM_SET_COMPARE( &htim1, TIM_CHANNEL_3, C);
+//	HAL_ADC_Start_DMA(&hadc1, (uint32_t *)&i_ph1, 1);
+//	HAL_ADC_Start_DMA(&hadc2, (uint32_t *)&i_ph2, 1);
+//	HAL_ADC_Start_DMA(&hadc3, (uint32_t *)&i_ph3, 1);
+	TIM1->CCR1 = Va*2598;
+	TIM1->CCR2 = Vb*2598;
+	TIM1->CCR3 = Vc*2598;
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc){
+	HAL_UART_Transmit_DMA(&huart2, (uint8_t*)&i_ph1, 2);
 }
 
 void sense2phase(ADC *adc_in,Phase *i_ph){
@@ -126,16 +143,16 @@ void phase2dqs(Phase *i_ph,Stationary *i_dqs){
 }
 
 void dqs2dqr(Stationary *i_dqs, Rotating *i_dqr, float theta){
-	i_dqr->de = i_dqs->ds*cos(theta)+i_dqs->qs*sin(theta);
-	i_dqr->qe = -i_dqs->ds*sin(theta)+i_dqs->qs*cos(theta);
+	i_dqr->dr =  i_dqs->ds*cos(theta) + i_dqs->qs*sin(theta);
+	i_dqr->qr = -i_dqs->ds*sin(theta) + i_dqs->qs*cos(theta);
 }
 
 void dqr2dqs(Rotating *i_dqr, Stationary *i_dqs,float theta){
-	i_dqs->ds = i_dqr->de*cos(theta) - i_dqr->qe*sin(theta);
-	i_dqs->qs = i_dqr->de*sin(theta) + i_dqr->qe*cos(theta);
+	i_dqs->ds = i_dqr->dr*cos(theta) - i_dqr->qr*sin(theta);
+	i_dqs->qs = i_dqr->dr*sin(theta) + i_dqr->qr*cos(theta);
 }
 
-void read_angle(struct angle *angle){
+void read_angle(float *angle){
 	uint16_t command;
 	uint8_t raw[2];
 	uint16_t data;
@@ -148,23 +165,16 @@ void read_angle(struct angle *angle){
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
 	data = raw[0]<<8|raw[1];
 	data &= 0x3fff;
-	angle->deg = data/8192.0*360.0;
-	angle->rad = data/8192.0*2*M_PI;
+	*angle = data/8191.0*2*M_PI;
 }
 
 //void read_speed(){
 //
 //}
 
-void m2e_angle(angle *theta){
+void m2e_angle(float *theta_m,float *theta_e){
 	// don't use in speed loop
-	theta->deg *= pole_pair*gear_ratio;
-	theta->rad *= pole_pair*gear_ratio;
-
-	//the following eq. only valid for vds = 0
-	theta->deg += 90;
-	if(theta->deg >= 360) theta->deg -= 360;
-	theta->rad += M_PI/2;
+	*theta_e = *theta_m*pole_pair*gear_ratio;
 }
 
 void limiter(float *value, float *min, float *max){
@@ -172,33 +182,31 @@ void limiter(float *value, float *min, float *max){
 	else if(value <= min) value = min;
 }
 
-void SpaceVector(Stationary *v,angle theta_e){
-	// calculate the
+void SpaceVector(Stationary *v,float theta_e){
 	static uint8_t sector=0;
 	float v_ref;
 	// calculate the magnitude of vds and vqs
 	v_ref = sqrt(v->ds*v->ds + v->qs*v->qs);
-
-	// calculate the angle between stator command and rotor angle
-
+	// calculate the angle of vds and vqs
+	theta_e = atan2(v->qs,v->ds) + theta_e;
 	// for testing
 	//read_angle(&theta_e);
 	//m2e_angle(&theta_e);
 
-	if (theta_e.deg>=0 && theta_e.deg<=60) sector = 1;
-	else if (theta_e.deg>=60 && theta_e.deg<=120) sector = 2;
-	else if (theta_e.deg>=120 && theta_e.deg<=180) sector = 3;
-	else if (theta_e.deg>=180 && theta_e.deg<=240) sector = 4;
-	else if (theta_e.deg>=240 && theta_e.deg<=300) sector = 5;
-	else if (theta_e.deg>=300 && theta_e.deg<=360) sector = 6;
-	else sector=0;
+//	if (theta_e.deg>=0 && theta_e.deg<=60) sector = 1;
+//	else if (theta_e.deg>=60 && theta_e.deg<=120) sector = 2;
+//	else if (theta_e.deg>=120 && theta_e.deg<=180) sector = 3;
+//	else if (theta_e.deg>=180 && theta_e.deg<=240) sector = 4;
+//	else if (theta_e.deg>=240 && theta_e.deg<=300) sector = 5;
+//	else if (theta_e.deg>=300 && theta_e.deg<=360) sector = 6;
+//	else sector=0;
 
-//	sector = floor(theta_e*3/M_PI)+1;
+	sector = floor(theta_e*3.0/M_PI)+1;
 
 	float n = sector*1.0;
 	float ts = v_ref/V_DC*sqrt(3);
-	float t1 = ts*sin(n*M_PI/3.0-theta_e.rad);
-	float t2 = ts*sin((theta_e.rad-n-1.0)/3.0*M_PI);
+	float t1 = ts*sin(n*M_PI/3.0-theta_e);
+	float t2 = ts*sin((theta_e-n-1.0)/3.0*M_PI);
 
 	float t0 = ts-(t1+t2);
 	float t120 = t1+t2+(t0/2);
@@ -234,18 +242,25 @@ void SpaceVector(Stationary *v,angle theta_e){
  	break;
 	}
 
-	A = 1.0*PWM_RES/(Ta*V_DC);
-	B = 1.0*PWM_RES/(Tb*V_DC);
-	C = 1.0*PWM_RES/(Tc*V_DC);
+	Va = (Ta*V_DC)/1.0*PWM_RES;
+	Vb = (Tb*V_DC)/1.0*PWM_RES;
+	Vc = (Tc*V_DC)/1.0*PWM_RES;
 }
 
-//void serial_write(){
+//void serial_write(Phase *data){
+//	uint8_t buffer[14] = {data};
+//	for(int i=0;i<3;i++){
+//		HAL_UART_Transmit_DMA(&huart2, &data, 4);
+//		HAL_UART_Transmit(&huart2, "\t", 1, 0);
+//	}
 //
 //}
-//
+
 //void serial_read(){
 //
 //}
+
+
 /* USER CODE END 0 */
 
 /**
@@ -255,11 +270,16 @@ void SpaceVector(Stationary *v,angle theta_e){
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  uint32_t adc_a,adc_b,adc_c;
-  struct Phase vsense = {adc_a,adc_b,adc_c};
-  struct Phase phase_current = {0,0,0};
-  struct Stationary dqs_current = {0,0};
-  struct Rotating dqe_current = {0,0};
+/* list of signal*/
+  uint16_t adc_a,adc_b,adc_c;
+  Phase vsense = {adc_a,adc_b,adc_c};
+  Phase phase_current = {0,0,0};
+  Phase phase_voltage = {0,0,0};
+  Stationary dqs_current = {0,0};
+  Rotating dqr_current = {0,0};
+  Rotating dqr_voltage = {0,0};
+  Stationary dqs_voltage = {0,0};
+  float e_angle = 0;
 
   /* USER CODE END 1 */
 
@@ -291,11 +311,13 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   HAL_TIM_Base_Start_IT( &htim1 );
-  HAL_ADC_Start_DMA(&hadc1, &adc_a, 1);
-  HAL_ADC_Start_DMA(&hadc2, &adc_b, 1);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)&i_ph1, 1);
+  HAL_ADC_Start_DMA(&hadc2, (uint32_t *)&i_ph2, 1);
+//  HAL_ADC_Start_DMA(&hadc3, (uint32_t *)&i_ph3, 1);
   HAL_TIM_PWM_Start( &htim1, TIM_CHANNEL_1 );
   HAL_TIM_PWM_Start( &htim1, TIM_CHANNEL_2 );
   HAL_TIM_PWM_Start( &htim1, TIM_CHANNEL_3 );
+
   //set nCS to high
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
 
@@ -308,8 +330,11 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  /*This is current loop*/
 	read_angle(&m_angle);
-
+//	m2e_angle(&m_angle,&e_angle);
+//	SpaceVector(&dqs_voltage,e_angle);
+//	serial_write(m_angle.deg);
   }
   /* USER CODE END 3 */
 }
@@ -356,7 +381,7 @@ void SystemClock_Config(void)
                               |RCC_PERIPHCLK_ADC12;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK1;
   PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
-  PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
+  PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_PLLCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
@@ -548,7 +573,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 0;
   htim1.Init.CounterMode = TIM_COUNTERMODE_CENTERALIGNED1;
-  htim1.Init.Period = 3600;
+  htim1.Init.Period = 7200;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -655,7 +680,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 38400;
+  huart2.Init.BaudRate = 9600;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -663,7 +688,8 @@ static void MX_USART2_UART_Init(void)
   huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
   huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_MSBFIRST_INIT;
+  huart2.AdvancedInit.MSBFirst = UART_ADVFEATURE_MSBFIRST_ENABLE;
   if (HAL_UART_Init(&huart2) != HAL_OK)
   {
     Error_Handler();
@@ -690,6 +716,12 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
+  /* DMA1_Channel6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);
+  /* DMA1_Channel7_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel7_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel7_IRQn);
 
 }
 
